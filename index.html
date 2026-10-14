@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRM — сделки команды</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e9edf1;--panel:#f7f9fb;--ink:#1c2433;--mute:#5d6878;--line:#d3dae2;--accent:#0e6b8a;--accent-ink:#fff;--danger:#b3372f;--ok:#2f7d4f}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#141a23;--panel:#1d2530;--ink:#e6ebf1;--mute:#93a0b1;--line:#2d3744;--accent:#4db3d3;--accent-ink:#0b1620;--danger:#ef7b72;--ok:#6cc58e}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Onest,system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:20px;margin:0 8px 0 0;font-weight:700}
+.stats{color:var(--mute);font-size:14px;flex:1;min-width:180px}
+input,select,textarea,button{font:inherit;color:inherit}
+input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#q{width:220px}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:8px 14px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:500}
+button.danger{color:var(--danger)}
+button:hover{border-color:var(--accent)}
+main{flex:1;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(250px,1fr);gap:12px;padding:16px 20px;overflow:auto}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column;min-height:200px;max-height:100%}
+.col.over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.col h2{margin:0;padding:12px 14px;font-size:15px;display:flex;justify-content:space-between;gap:8px;border-bottom:3px solid var(--c)}
+.col h2 small{color:var(--mute);font-weight:400}
+.list{padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1}
+.card{background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px;padding:10px 12px;cursor:grab}
+.card:hover{border-color:var(--accent);border-left-color:var(--c)}
+.card.dragging{opacity:.4}
+.card b{display:block}
+.card .co{color:var(--mute);font-size:13px}
+.card .row{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:13px}
+.sum{font-weight:700}
+.late{color:var(--danger);font-weight:500}
+.empty{color:var(--mute);font-size:13px;padding:8px 4px}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0;width:min(480px,94vw)}
+dialog::backdrop{background:rgba(10,15,22,.55)}
+form{padding:18px;display:grid;gap:12px;grid-template-columns:1fr 1fr}
+form h3{grid-column:1/-1;margin:0}
+label{display:grid;gap:4px;font-size:13px;color:var(--mute)}
+label.w{grid-column:1/-1}
+.actions{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.actions .sp{flex:1}
+@media (max-width:640px){main{grid-auto-flow:row;grid-auto-columns:auto;overflow:visible}body{display:block}form{grid-template-columns:1fr}#q{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>CRM</h1>
+  <div class="stats" id="stats"></div>
+  <input id="q" type="search" placeholder="Поиск по клиентам и компаниям" aria-label="Поиск">
+  <button id="export" title="Скачать резервную копию">Экспорт</button>
+  <button id="import" title="Загрузить резервную копию">Импорт</button>
+  <input id="file" type="file" accept="application/json" hidden>
+  <button class="primary" id="add">Новая сделка</button>
+</header>
+<main id="board"></main>
+
+<dialog id="dlg">
+  <form id="f" method="dialog">
+    <h3 id="ttl">Сделка</h3>
+    <label>Клиент<input name="name" required></label>
+    <label>Компания<input name="company"></label>
+    <label>Email<input name="email" type="email"></label>
+    <label>Телефон<input name="phone" type="tel"></label>
+    <label>Сумма, ₽<input name="amount" type="number" min="0" step="1000" value="0"></label>
+    <label>Следующий шаг до<input name="due" type="date"></label>
+    <label>Этап<select name="stage"></select></label>
+    <label>Ответственный<select name="owner"><option>Я</option><option>Дизайнер</option><option>Разработчик</option></select></label>
+    <label class="w">Заметка<textarea name="note" rows="3"></textarea></label>
+    <div class="actions">
+      <button type="button" class="danger" id="del">Удалить</button>
+      <span class="sp"></span>
+      <button type="button" id="cancel">Отмена</button>
+      <button type="submit" class="primary">Сохранить</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const STAGES=[
+  {id:'new',name:'Новые',c:'#7a8aa0'},
+  {id:'talk',name:'Переговоры',c:'#0e6b8a'},
+  {id:'offer',name:'Предложение',c:'#b7791f'},
+  {id:'won',name:'Выиграны',c:'#2f7d4f'},
+  {id:'lost',name:'Потеряны',c:'#b3372f'}
+];
+const KEY='crm-deals-v1';
+let deals=load(), editing=null, query='';
+
+function load(){
+  try{const d=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(d))return d}catch(e){}
+  return [
+    {id:uid(),name:'Анна Смирнова',company:'ООО «Вектор»',email:'anna@example.com',phone:'',amount:240000,due:'',stage:'talk',owner:'Я',note:'Обсудить сроки по макетам'},
+    {id:uid(),name:'Игорь Петров',company:'Студия «Лайм»',email:'',phone:'',amount:90000,due:'',stage:'new',owner:'Разработчик',note:''}
+  ];
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(deals))}catch(e){}}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+const fmt=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+function render(){
+  const q=query.toLowerCase();
+  const shown=deals.filter(d=>!q||(d.name+' '+d.company).toLowerCase().includes(q));
+  const today=new Date().toISOString().slice(0,10);
+  const board=document.getElementById('board');
+  board.innerHTML='';
+  STAGES.forEach(s=>{
+    const items=shown.filter(d=>d.stage===s.id);
+    const sum=items.reduce((a,d)=>a+(+d.amount||0),0);
+    const col=document.createElement('section');
+    col.className='col';col.style.setProperty('--c',s.c);col.dataset.stage=s.id;
+    col.innerHTML=`<h2><span>${s.name} <small>${items.length}</small></span><small>${fmt(sum)}</small></h2><div class="list"></div>`;
+    const list=col.querySelector('.list');
+    if(!items.length)list.innerHTML='<div class="empty">Пока пусто. Перетащите сюда сделку.</div>';
+    items.forEach(d=>{
+      const late=d.due&&d.due<today&&s.id!=='won'&&s.id!=='lost';
+      const el=document.createElement('article');
+      el.className='card';el.draggable=true;el.dataset.id=d.id;el.tabIndex=0;
+      el.innerHTML=`<b>${esc(d.name)}</b><span class="co">${esc(d.company)||'Без компании'}</span>
+        <div class="row"><span class="sum">${fmt(+d.amount||0)}</span><span>${esc(d.owner)}</span></div>
+        ${d.due?`<div class="row ${late?'late':''}"><span>${late?'Просрочено: ':'Шаг до: '}${d.due.split('-').reverse().join('.')}</span></div>`:''}`;
+      el.addEventListener('click',()=>openDlg(d.id));
+      el.addEventListener('keydown',e=>{if(e.key==='Enter')openDlg(d.id)});
+      el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',d.id);el.classList.add('dragging')});
+      el.addEventListener('dragend',()=>el.classList.remove('dragging'));
+      list.appendChild(el);
+    });
+    col.addEventListener('dragover',e=>{e.preventDefault();col.classList.add('over')});
+    col.addEventListener('dragleave',()=>col.classList.remove('over'));
+    col.addEventListener('drop',e=>{
+      e.preventDefault();col.classList.remove('over');
+      const d=deals.find(x=>x.id===e.dataTransfer.getData('text/plain'));
+      if(d&&d.stage!==s.id){d.stage=s.id;save();render()}
+    });
+    board.appendChild(col);
+  });
+  const open=deals.filter(d=>d.stage!=='won'&&d.stage!=='lost');
+  const won=deals.filter(d=>d.stage==='won');
+  document.getElementById('stats').textContent=
+    `В работе: ${open.length} на ${fmt(open.reduce((a,d)=>a+(+d.amount||0),0))} · Выиграно: ${fmt(won.reduce((a,d)=>a+(+d.amount||0),0))}`;
+}
+
+const dlg=document.getElementById('dlg'),f=document.getElementById('f');
+f.stage.innerHTML=STAGES.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+function openDlg(id){
+  editing=id||null;
+  const d=id?deals.find(x=>x.id===id):{name:'',company:'',email:'',phone:'',amount:0,due:'',stage:'new',owner:'Я',note:''};
+  document.getElementById('ttl').textContent=id?'Редактировать сделку':'Новая сделка';
+  for(const k of ['name','company','email','phone','amount','due','stage','owner','note'])f[k].value=d[k]??'';
+  document.getElementById('del').style.display=id?'':'none';
+  dlg.showModal();f.name.focus();
+}
+f.addEventListener('submit',()=>{
+  const data={};
+  for(const k of ['name','company','email','phone','amount','due','stage','owner','note'])data[k]=f[k].value.trim();
+  data.amount=+data.amount||0;
+  if(editing)Object.assign(deals.find(x=>x.id===editing),data);
+  else deals.push({id:uid(),...data});
+  save();render();
+});
+document.getElementById('cancel').onclick=()=>dlg.close();
+document.getElementById('del').onclick=()=>{
+  if(confirm('Удалить эту сделку?')){deals=deals.filter(x=>x.id!==editing);save();render();dlg.close()}
+};
+document.getElementById('add').onclick=()=>openDlg();
+document.getElementById('q').oninput=e=>{query=e.target.value;render()};
+document.getElementById('export').onclick=()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(deals,null,2)],{type:'application/json'}));
+  a.download='crm-backup.json';a.click();URL.revokeObjectURL(a.href);
+};
+document.getElementById('import').onclick=()=>document.getElementById('file').click();
+document.getElementById('file').onchange=async e=>{
+  try{
+    const d=JSON.parse(await e.target.files[0].text());
+    if(!Array.isArray(d))throw 0;
+    if(confirm('Заменить текущие сделки данными из файла?')){deals=d;save();render()}
+  }catch(err){alert('Не удалось прочитать файл. Нужен JSON, который скачан через «Экспорт».')}
+  e.target.value='';
+};
+render();
+</script>
+</body>
+</html>
